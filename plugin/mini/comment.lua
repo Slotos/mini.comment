@@ -31,10 +31,10 @@
 ---
 --- # Setup ~
 ---
---- This module needs a setup with `require('mini.comment').setup({})` (replace
---- `{}` with your `config` table). It will create global Lua table
---- `MiniComment` which you can use for scripting or manually (with
---- `:lua MiniComment.*`).
+--- This plugin supports a setup with `MiniComment.setup({})` (replace
+--- `{}` with your `config` table).
+--- `MiniComment` is a global lua table which you can use for scripting
+--- or manually (with `:lua MiniComment.*`).
 ---
 --- See |MiniComment.config| for `config` structure and default values.
 ---
@@ -47,8 +47,11 @@
 --- To disable core functionality, set `vim.g.minicomment_disable` (globally) or
 --- `vim.b.minicomment_disable` (for a buffer) to `true`. Considering high number
 --- of different scenarios and customization intentions, writing exact rules
---- for disabling module's functionality is left to user. See
+--- for disabling plugin's functionality is left to user. See
 --- |mini.nvim-disabling-recipes| for common recipes.
+
+-- Prevent repeated execution
+if vim.g.loaded_mini_comment == 1 then return end
 
 -- Module definition ==========================================================
 local MiniComment = {}
@@ -58,11 +61,8 @@ local H = {}
 ---
 ---@param config table|nil Module config table. See |MiniComment.config|.
 ---
----@usage `require('mini.comment').setup({})` (replace `{}` with your `config` table)
+---@usage `MiniComment.setup({})` (replace `{}` with your `config` table)
 MiniComment.setup = function(config)
-  -- Export module
-  _G.MiniComment = MiniComment
-
   -- Setup config
   config = H.setup_config(config)
 
@@ -92,7 +92,7 @@ end
 --- For example, this option can be used to always use buffer 'commentstring'
 --- even in case of present active tree-sitter parser: >
 ---
----   require('mini.comment').setup({
+---   MiniComment.setup({
 ---     options = {
 ---       custom_commentstring = function() return vim.bo.commentstring end,
 ---     }
@@ -418,26 +418,21 @@ end
 H.apply_config = function(config)
   MiniComment.config = config
 
+  -- Clear default mappings once
+  if H._default_comment_mapped then
+    vim.keymap.del('n', 'gc')
+    vim.keymap.del('x', 'gc')
+    vim.keymap.del('o', 'gc')
+  end
+  if H._default_comment_mapped then
+    vim.keymap.del('n', 'gcc')
+  end
+
   -- Make mappings
-  H.map('n', config.mappings.comment, function() return MiniComment.operator() end, { expr = true, desc = 'Comment' })
-  H.map(
-    'x',
-    config.mappings.comment_visual,
-    -- Using `:<c-u>` instead of `<cmd>` as latter results into executing before
-    -- proper update of `'<` and `'>` marks which is needed to work correctly.
-    [[:<c-u>lua MiniComment.operator('visual')<cr>]],
-    { desc = 'Comment selection' }
-  )
-  H.map(
-    'n',
-    config.mappings.comment_line,
-    function() return MiniComment.operator() .. '_' end,
-    { expr = true, desc = 'Comment line' }
-  )
-  -- Use `<Cmd>...<CR>` to have proper dot-repeat
-  -- See https://github.com/neovim/neovim/issues/23406
-  local modes = config.mappings.textobject == config.mappings.comment_visual and { 'o' } or { 'x', 'o' }
-  H.map(modes, config.mappings.textobject, '<Cmd>lua MiniComment.textobject()<CR>', { desc = 'Comment textobject' })
+  H.map('n', config.mappings.comment, '<Plug>MiniComment', { desc = 'Comment' })
+  H.map('x', config.mappings.comment_visual, '<Plug>MiniComment', { desc = 'Comment selection' })
+  H.map('n', config.mappings.comment_line, '<Plug>MiniCommentLine', { desc = 'Comment line' })
+  H.map('o', config.mappings.textobject, '<Plug>MiniComment', { desc = 'Comment textobject' })
 end
 
 H.is_disabled = function() return vim.g.minicomment_disable == true or vim.b.minicomment_disable == true end
@@ -575,4 +570,40 @@ H.call_safely = function(f, ...)
   return f(...)
 end
 
-return MiniComment
+-- Export module
+_G.MiniComment = MiniComment
+
+vim.keymap.set('n', '<Plug>MiniCommentLine', function() return MiniComment.operator() .. '_' end, { expr = true, silent = true, noremap = true, desc = 'Comment line' })
+vim.keymap.set('n', '<Plug>MiniComment', function() return MiniComment.operator() end, { expr = true, silent = true, noremap = true, desc = 'Comment' })
+-- Using `:<c-u>` instead of `<cmd>` as latter results into executing before
+-- proper update of `'<` and `'>` marks which is needed to work correctly.
+vim.keymap.set('x', '<Plug>MiniComment', [[:<c-u>lua MiniComment.operator('visual')<cr>]], { silent = true, noremap = true, desc = 'Comment selection' })
+-- Use `<Cmd>...<CR>` to have proper dot-repeat
+-- See https://github.com/neovim/neovim/issues/23406
+vim.keymap.set('o', '<Plug>MiniComment', '<Cmd>lua MiniComment.textobject()<CR>', { silent = true, noremap = true, desc = 'Comment textobject' })
+
+local default_config = H.get_config()
+local mappings_are_available = function(config)
+  if vim.fn.mapcheck(config.mappings.comment, 'n') ~= "" then return false end
+  if vim.fn.mapcheck(config.mappings.comment_line, 'n') ~= "" then return false end
+  if vim.fn.mapcheck(config.mappings.comment_visual, 'x') ~= "" then return false end
+  if vim.fn.mapcheck(config.mappings.textobject, 'o') ~= "" then return false end
+  return true
+end
+
+if mappings_are_available(default_config) then
+  if vim.fn.hasmapto('<Plug>MiniComment') == 0 then
+    H._default_comment_mapped = true
+    vim.keymap.set('n', default_config.mappings.comment, '<Plug>MiniComment')
+    vim.keymap.set('x', default_config.mappings.comment_visual, '<Plug>MiniComment')
+    vim.keymap.set('o', default_config.mappings.textobject, '<Plug>MiniComment')
+  end
+
+  if vim.fn.hasmapto('<Plug>MiniCommentLine') == 0 then
+    H._default_comment_mapped = true
+    vim.keymap.set('n', default_config.mappings.comment_line, '<Plug>MiniCommentLine')
+  end
+end
+
+-- Declare plugin loaded
+vim.g.loaded_mini_comment = 1

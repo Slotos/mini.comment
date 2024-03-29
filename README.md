@@ -129,8 +129,6 @@ Here are code snippets for some common installation methods (use only one):
 
 <br>
 
-**Important**: don't forget to call `require('mini.comment').setup()` to enable its functionality.
-
 **Note**: if you are on Windows, there might be problems with too long file paths (like `error: unable to create file <some file name>: Filename too long`). Try doing one of the following:
 - Enable corresponding git global config value: `git config --system core.longpaths true`. Then try to reinstall.
 - Install plugin in other place with shorter path.
@@ -138,7 +136,7 @@ Here are code snippets for some common installation methods (use only one):
 ## Default config
 
 ```lua
--- No need to copy this inside `setup()`. Will be used automatically.
+-- No need to explicitly invoke `MiniComment.setup()` for this. Will be used automatically.
 {
   -- Options which control module behavior
   options = {
